@@ -20,6 +20,8 @@ from __future__ import with_statement
 import os
 import sys
 import errno
+import logging
+import optparse
 
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 from boxfs import BoxFS
@@ -31,8 +33,39 @@ def context(self):
 
 class FuseBox(Operations):
 
-    def __init__(self):
+    def __init__(self,conf_file=None):
         self.boxfs = BoxFS()
+        if conf_file is not None:
+            self.read_conf_file(conf_file)
+
+    def read_conf_file(self,conf_file):
+        # Conf file is tab-delimited
+        # Lines starting with # are comments, blank lines are ignored
+        # Lines starting with USER define user name and UID
+        # Lines starting with FILE define files, targets and permissions
+        for line in open(conf_file,'r'):
+            if line.startswith('#') or line.strip() == '':
+                continue
+            elif line.startswith('USER'):
+                # e.g. USER    pjb     1000
+                fields = line.strip().split('\t')
+                if len(fields) == 3:
+                    self.boxfs.add_user(fields[1],int(fields[2]))
+                else:
+                    logging.error("Bad line: %s" % line.strip())
+                    continue
+            elif line.startswith('FILE'):
+                # e.g. FILE    virtfile    /actual/file     1000
+                fields = line.strip().split('\t')
+                if len(fields) == 4:
+                    access = [int(x) for x in fields[3].split(',')]
+                    self.boxfs.add_file(fields[1],fields[2],access=access)
+                else:
+                    logging.error("Bad line: %s" % line.strip())
+                    continue
+            else:
+                logging.error("Unrecognised line: %s" % line.strip())
+                continue
 
     def context_uid(self):
         cxt = fuse_get_context()
@@ -46,7 +79,7 @@ class FuseBox(Operations):
     # ==================
 
     def access(self, path, mode):
-        print "ACCESS %s %s" % (path,mode)
+        logging.debug("ACCESS %s %s" % (path,mode))
         if self.boxfs.is_file(path) and self.has_permission(path):
             if not os.access(self.boxfs.target_for(path),mode):
                 raise FuseOSError(errno.EACCES)
@@ -60,7 +93,7 @@ class FuseBox(Operations):
         raise NotImplementedError
 
     def getattr(self, path, fh=None):
-        print "GETATTR %s %s" % (path,fh)
+        logging.debug("GETATTR %s %s" % (path,fh))
         try:
             full_path = self.boxfs.target_for(path)
         except KeyError:
@@ -71,15 +104,15 @@ class FuseBox(Operations):
                                                         'st_nlink', 'st_size', 'st_uid'))
 
     def readdir(self, path, fh):
-        print "READDIR %s %s" % (path,fh)
+        logging.debug("READDIR %s %s" % (path,fh))
         dirents = ['.', '..']
         if self.boxfs.is_dir(path):
             for d in self.boxfs.list_dir(path):
                 if self.has_permission(os.path.join(path,d)):
                     dirents.append(d)
-            print "READDIR dirents %s" % dirents
+            logging.debug("READDIR dirents %s" % dirents)
         for r in dirents:
-            print "-> yielding %s" % r
+            logging.debug("-> yielding %s" % r)
             yield r
 
     def readlink(self, path):
@@ -95,7 +128,7 @@ class FuseBox(Operations):
         raise NotImplementedError
 
     def statfs(self, path):
-        print "STATFS %s" % path
+        logging.debug("STATFS %s" % path)
         full_path = self.boxfs.target_for(path)
         stv = os.statvfs(full_path)
         return dict((key, getattr(stv, key)) for key in ('f_bavail', 'f_bfree',
@@ -122,7 +155,7 @@ class FuseBox(Operations):
     # ============
 
     def open(self, path, flags):
-        print "OPEN %s %s" % (path,flags)
+        logging.debug("OPEN %s %s" % (path,flags))
         full_path = self.boxfs.target_for(path)
         return os.open(full_path, flags)
 
@@ -130,7 +163,7 @@ class FuseBox(Operations):
         raise NotImplementedError
 
     def read(self, path, length, offset, fh):
-        print "READ %s %s %s %s" % (path,length,offset,fh)
+        logging.debug("READ %s %s %s %s" % (path,length,offset,fh))
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
@@ -149,19 +182,22 @@ class FuseBox(Operations):
     def fsync(self, path, fdatasync, fh):
         return self.flush(path, fh)
 
-def main(mountpoint):
+def main(mountpoint,conf_file=None):
     # Need to set user_allow_other in /etc/fuse.conf for
     # allow_other option to work (or run this process as root)
-    fusebox = FuseBox()
-    fusebox.boxfs.add_user('pjb',1000)
-    fusebox.boxfs.add_user('evil_pjb',1001)
-    fusebox.boxfs.add_file('Programs/sam2soap.py',
-                           '/home/pjb/genomics_devel/utils/sam2soap.py',
-                           access=[1000])
-    fusebox.boxfs.add_file('Programs/md5checker.py',
-                           '/home/pjb/genomics_devel/utils/md5checker.py')
+    fusebox = FuseBox(conf_file)
     FUSE(fusebox,mountpoint,foreground=True,allow_other=True)
 
 if __name__ == '__main__':
     
-    main(sys.argv[1])
+    p = optparse.OptionParser(usage="%prog OPTIONS MOUNTPOINT",
+                              description="Start fusebox virtual file system and "
+                              "mount at MOUNTPOINT.")
+    p.add_option("--conf",action='store',dest='conf_file',default=None,
+                 help="read user and file info from CONF_FILE")
+    p.add_option("--debug",action='store_true',dest='debug',
+                 help="turn on debugging output")
+    options,args = p.parse_args()
+    if options.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    main(args[0],conf_file=options.conf_file)
