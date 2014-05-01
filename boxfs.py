@@ -31,7 +31,7 @@ class BoxFS:
         while dirpath:
             if dirpath not in self.dirs:
                 self.dirs.append(dirpath)
-            basename = os.path.dirname(dirpath)
+            basename = os.path.basename(dirpath)
             dirpath = os.path.dirname(dirpath)
             if basename == '':
                 continue
@@ -149,6 +149,23 @@ class TestBoxFS(unittest.TestCase):
         self.assertTrue(box.target_for('mydir/test'),'/data/file')
         self.assertEqual(box.list_dir('/'),['mydir'])
         self.assertEqual(box.list_dir('mydir'),['test'])
+    def test_boxfs_add_deep_file(self):
+        box = BoxFS()
+        box.add_file('mydir/mydata/down/below/test','/data/file')
+        self.assertEqual(box.dirs,['/',
+                                   'mydir/mydata/down/below',
+                                   'mydir/mydata/down',
+                                   'mydir/mydata',
+                                   'mydir'])
+        self.assertTrue(box.is_dir('/'))
+        self.assertTrue(box.is_dir('mydir'))
+        self.assertTrue(box.is_file('mydir/mydata/down/below/test'))
+        self.assertTrue(box.target_for('mydir/mydata/down/below/test'),'/data/file')
+        self.assertEqual(box.list_dir('/'),['mydir'])
+        self.assertEqual(box.list_dir('mydir'),['mydata'])
+        self.assertEqual(box.list_dir('mydir/mydata'),['down'])
+        self.assertEqual(box.list_dir('mydir/mydata/down'),['below'])
+        self.assertEqual(box.list_dir('mydir/mydata/down/below'),['test'])
     def test_boxfs_add_multiple_files_and_dirs(self):
         box = BoxFS()
         box.add_file('mydir/test','/data/file')
