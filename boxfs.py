@@ -11,6 +11,8 @@ class BoxFS:
         self.dircontents = {'/':[]}
         self.files = []
         self.targets = {}
+        self.permissions = {}
+        self.users = {}
 
     def normalise_path(self,path):
         if path == '' or path == '/':
@@ -18,6 +20,11 @@ class BoxFS:
         elif path.startswith('/'):
             return path[1:]
         return path
+
+    def add_user(self,name,uid):
+        if name in self.users:
+            raise KeyError,"User '%s' already present" % name
+        self.users[name] = uid
 
     def add_dir(self,path):
         dirpath = self.normalise_path(path)
@@ -33,9 +40,11 @@ class BoxFS:
                     self.dircontents[dirpath].append(basename)
             except KeyError:
                 self.dircontents[dirpath] = [basename]
-        self.dircontents['/'].append(path.split(os.sep)[0])
+        basename = path.split(os.sep)[0]
+        if basename not in self.dircontents['/']:
+            self.dircontents['/'].append(basename)
 
-    def add_file(self,path,target):
+    def add_file(self,path,target,access=[]):
         self.files.append(path)
         filen = os.path.basename(path)
         dirpath = os.path.dirname(path)
@@ -43,6 +52,8 @@ class BoxFS:
         if dirpath:
             self.add_dir(os.path.dirname(path))
         self.targets[path] = target
+        for uid in access:
+            self.set_permission(path,uid)
         print "add_file: '%s' '%s' '%s'" % (path,filen,dirpath)
         if dirpath == '':
             dirpath = '/'
@@ -72,6 +83,33 @@ class BoxFS:
             return self.dircontents[self.normalise_path(path)]
         except KeyError:
             return []
+
+    def list_users(self):
+        users = self.users.keys()
+        users.sort()
+        return users
+
+    def set_permission(self,path,uid):
+        if not self.is_file(path):
+            return
+        try:
+            self.permissions[path].append(uid)
+        except KeyError:
+            self.permissions[path] = [uid]
+
+    def has_permission(self,path,uid):
+        path = self.normalise_path(path)
+        if self.is_file(path):
+            try:
+                return uid in self.permissions[path]
+            except KeyError:
+                return True
+        elif self.is_dir(path):
+            for f in self.files:
+                f = self.normalise_path(f)
+                if f.startswith(path) and self.has_permission(f,uid):
+                    return True
+        return False
 
 import unittest
 class TestBoxFS(unittest.TestCase):
@@ -111,6 +149,13 @@ class TestBoxFS(unittest.TestCase):
         self.assertTrue(box.target_for('mydir/test'),'/data/file')
         self.assertEqual(box.list_dir('/'),['mydir'])
         self.assertEqual(box.list_dir('mydir'),['test'])
+    def test_boxfs_add_multiple_files_and_dirs(self):
+        box = BoxFS()
+        box.add_file('mydir/test','/data/file')
+        box.add_file('mydir/test2','/data/file2')
+        self.assertEqual(box.dirs,['/','mydir'])
+        self.assertEqual(box.list_dir('/'),['mydir'])
+        self.assertEqual(box.list_dir('/mydir'),['test','test2'])
     def test_boxfs_deal_with_leading_slash(self):
         box = BoxFS()
         box.add_file('mydir/test','/data/file')
@@ -121,3 +166,43 @@ class TestBoxFS(unittest.TestCase):
         self.assertTrue(box.target_for('/mydir/test'),'/data/file')
         self.assertEqual(box.list_dir('/'),['mydir'])
         self.assertEqual(box.list_dir('/mydir'),['test'])
+    def test_boxfs_add_users(self):
+        box = BoxFS()
+        box.add_user('anonymouse',1000)
+        box.add_user('catweazle',1001)
+        self.assertEqual(box.list_users(),['anonymouse','catweazle'])
+        self.assertRaises(KeyError,box.add_user,'catweazle',1002)
+    def test_boxfs_add_file_with_no_permissions(self):
+        box = BoxFS()
+        box.add_user('anonymouse',1000)
+        box.add_file('myfile','/data/file')
+        self.assertTrue(box.is_file('myfile'))
+        self.assertTrue(box.target_for('myfile'),'/data/file')
+        self.assertTrue(box.has_permission('myfile',1000))
+        self.assertTrue(box.has_permission('/myfile',1000))
+    def test_boxfs_add_file_with_permissions(self):
+        box = BoxFS()
+        box.add_user('anonymouse',1000)
+        box.add_user('catweazle',1001)
+        box.add_file('myfile','/data/file',access=[1000])
+        self.assertTrue(box.is_file('myfile'))
+        self.assertTrue(box.target_for('myfile'),'/data/file')
+        self.assertTrue(box.has_permission('myfile',1000))
+        self.assertTrue(box.has_permission('/myfile',1000))
+        self.assertFalse(box.has_permission('myfile',1001))
+        self.assertFalse(box.has_permission('/myfile',1001))
+    def test_boxfs_add_file_in_dir_with_permissions(self):
+        box = BoxFS()
+        box.add_user('anonymouse',1000)
+        box.add_user('catweazle',1001)
+        box.add_file('data/myfile','/data/file',access=[1000])
+        self.assertTrue(box.is_file('data/myfile'))
+        self.assertTrue(box.target_for('data/myfile'),'/data/file')
+        self.assertTrue(box.has_permission('data/myfile',1000))
+        self.assertTrue(box.has_permission('data',1000))
+        self.assertTrue(box.has_permission('/data/myfile',1000))
+        self.assertTrue(box.has_permission('/data',1000))
+        self.assertFalse(box.has_permission('data/myfile',1001))
+        self.assertFalse(box.has_permission('data',1001))
+        self.assertFalse(box.has_permission('/data/myfile',1001))
+        self.assertFalse(box.has_permission('/data',1001))

@@ -34,17 +34,23 @@ class FuseBox(Operations):
     def __init__(self):
         self.boxfs = BoxFS()
 
+    def context_uid(self):
+        cxt = fuse_get_context()
+        return cxt[0]
+
+    def has_permission(self,path):
+        uid = self.context_uid()
+        return self.boxfs.has_permission(path,uid)
+
     # Filesystem methods
     # ==================
 
     def access(self, path, mode):
         print "ACCESS %s %s" % (path,mode)
-        if path.startswith('/'):
-            path = path[1:]
-        elif self.boxfs.is_file(path):
+        if self.boxfs.is_file(path) and self.has_permission(path):
             if not os.access(self.boxfs.target_for(path),mode):
                 raise FuseOSError(errno.EACCES)
-        elif not self.boxfs.is_dir(path):
+        elif not self.boxfs.is_dir(path) and self.has_permission(path):
                 raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
@@ -68,7 +74,9 @@ class FuseBox(Operations):
         print "READDIR %s %s" % (path,fh)
         dirents = ['.', '..']
         if self.boxfs.is_dir(path):
-            dirents.extend(self.boxfs.list_dir(path))
+            for d in self.boxfs.list_dir(path):
+                if self.has_permission(os.path.join(path,d)):
+                    dirents.append(d)
             print "READDIR dirents %s" % dirents
         for r in dirents:
             print "-> yielding %s" % r
@@ -92,7 +100,8 @@ class FuseBox(Operations):
         stv = os.statvfs(full_path)
         return dict((key, getattr(stv, key)) for key in ('f_bavail', 'f_bfree',
             'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
-            'f_frsize', 'f_namemax'))
+            'f_frsize', 'f_namemax',
+            'st_blocks','st_blksize'))
 
     def unlink(self, path):
         raise NotImplementedError
@@ -140,13 +149,17 @@ class FuseBox(Operations):
     def fsync(self, path, fdatasync, fh):
         return self.flush(path, fh)
 
-
 def main(mountpoint):
     # Need to set user_allow_other in /etc/fuse.conf for
     # allow_other option to work (or run this process as root)
     fusebox = FuseBox()
+    fusebox.boxfs.add_user('pjb',1000)
+    fusebox.boxfs.add_user('evil_pjb',1001)
     fusebox.boxfs.add_file('Programs/sam2soap.py',
-                           '/home/pjb/genomics_devel/utils/sam2soap.py')
+                           '/home/pjb/genomics_devel/utils/sam2soap.py',
+                           access=[1000])
+    fusebox.boxfs.add_file('Programs/md5checker.py',
+                           '/home/pjb/genomics_devel/utils/md5checker.py')
     FUSE(fusebox,mountpoint,foreground=True,allow_other=True)
 
 if __name__ == '__main__':
