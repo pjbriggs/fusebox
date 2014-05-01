@@ -26,11 +26,6 @@ import optparse
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 from boxfs import BoxFS
 
-def context(self):
-    cxt = fuse_get_context()
-    print "UID: %s PID: %s" % (cxt[0],cxt[2])
-    return cxt
-
 class FuseBox(Operations):
 
     def __init__(self,conf_file=None):
@@ -130,7 +125,10 @@ class FuseBox(Operations):
 
     def statfs(self, path):
         logging.debug("STATFS %s" % path)
-        full_path = self.boxfs.target_for(path)
+        try:
+            full_path = self.boxfs.target_for(path)
+        except KeyError:
+            full_path = os.getcwd()
         stv = os.statvfs(full_path)
         return dict((key, getattr(stv, key)) for key in ('f_bavail', 'f_bfree',
             'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
