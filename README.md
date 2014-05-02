@@ -5,12 +5,20 @@ Implements a FUSE virtual file system that can be used to create a read-only
 arbitrary artifical filesystem with fine-grained access to individual files
 for users.
 
-This implementation is a proof-of-principle, not a production system.
+**This implementation is a proof-of-principle, not a production system.**
+
+The fusebox file system is defined as a set of mappings of arbitrary paths
+to actual files. Access is granted to users on a per-file basis.
+
+Virtual directories only exist as routes to virtual files. A user can always
+see a route to a virtual file if they have the right to access that file.
+Within a virtual directory a user only sees those virtual files and
+subdirectories that they have access to.
 
 Installing
 ----------
 
-Make a virtualenv and get fusepy:
+Make a virtualenv and install `fusepy` e.g.:
 
     % virtualenv fuse
     % . fuse/bin/activate
@@ -28,8 +36,9 @@ Note that UIDs must correspond to uids of users on the real file system.
 Running
 -------
 
-Start the `fusebox` instance:
+Activate the virtualenv and start the `fusebox` instance e.g.:
 
+    % . fuse/bin/activate
     (fuse)% fusebox.py --conf=CONF_FILE MOUNTPOINT
 
 The CONF_FILE defines the virtual file system. The MOUNTPOINT must be an
