@@ -109,10 +109,8 @@ class FuseBox(Operations):
         logging.debug("READDIR %s %s" % (path,fh))
         dirents = ['.', '..']
         if self.boxfs.is_dir(path):
-            for d in self.boxfs.list_dir(path):
-                if self.has_permission(os.path.join(path,d)):
-                    dirents.append(d)
-            logging.debug("READDIR dirents %s" % dirents)
+            dirents.extend(self.boxfs.list_dir(path,user=self.context_uid()))
+        logging.debug("READDIR dirents %s" % dirents)
         for r in dirents:
             logging.debug("-> yielding %s" % r)
             yield r
