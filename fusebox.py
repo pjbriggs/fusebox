@@ -68,7 +68,7 @@ class FuseBox(Operations):
 
     def has_permission(self,path):
         uid = self.context_uid()
-        return self.boxfs.has_permission(path,uid)
+        return self.boxfs.has_access(path,uid)
 
     # Filesystem methods
     # ==================
