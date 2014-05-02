@@ -24,43 +24,12 @@ import logging
 import optparse
 
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
-from boxfs import BoxFS
+from boxfs import BoxFS, BoxConfFile
 
 class FuseBox(Operations):
 
     def __init__(self,conf_file=None):
-        self.boxfs = BoxFS()
-        if conf_file is not None:
-            self.read_conf_file(conf_file)
-
-    def read_conf_file(self,conf_file):
-        # Conf file is tab-delimited
-        # Lines starting with # are comments, blank lines are ignored
-        # Lines starting with USER define user name and UID
-        # Lines starting with FILE define files, targets and permissions
-        for line in open(conf_file,'r'):
-            if line.startswith('#') or line.strip() == '':
-                continue
-            elif line.startswith('USER'):
-                # e.g. USER    pjb     1000
-                fields = line.strip().split('\t')
-                if len(fields) == 3:
-                    self.boxfs.add_user(fields[1],int(fields[2]))
-                else:
-                    logging.error("Bad line: %s" % line.strip())
-                    continue
-            elif line.startswith('FILE'):
-                # e.g. FILE    virtfile    /actual/file     1000
-                fields = line.strip().split('\t')
-                if len(fields) == 4:
-                    access = [int(x) for x in fields[3].split(',')]
-                    self.boxfs.add_file(fields[1],fields[2],access=access)
-                else:
-                    logging.error("Bad line: %s" % line.strip())
-                    continue
-            else:
-                logging.error("Unrecognised line: %s" % line.strip())
-                continue
+        self.boxfs = BoxConfFile(conf_file).populate(BoxFS())
 
     def context_uid(self):
         cxt = fuse_get_context()

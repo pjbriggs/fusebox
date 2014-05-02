@@ -3,6 +3,7 @@
 # Backend for managing a conceptual directory structure
 # 
 import os
+import logging
 
 class BoxFSBase:
     """Base class for BoxFS implementations
@@ -70,6 +71,8 @@ class BoxFSBase:
         raise NotImplementedError,"Subclass must implement has_access method"
 
 class BoxFS(BoxFSBase):
+    """Basic implementation of BoxFS
+    """
 
     def __init__(self):
         """Create new BoxFS instance
@@ -169,6 +172,101 @@ class BoxFS(BoxFSBase):
             if self.has_access(filepath,user) and filepath.startswith(path):
                 return True
         return False
+
+class BoxConfFile:
+    """Handle configuration file for BoxFS
+    """
+
+    def __init__(self,conf_file=None):
+        self.__conf_file = conf_file
+        self.users = dict()
+        self.files = dict()
+        self.access = dict()
+        self.load_conf()
+
+    def load_conf(self):
+        # Conf file is tab-delimited
+        # Lines starting with # are comments, blank lines are ignored
+        # Lines starting with USER define user name and UID
+        # Lines starting with FILE define files, targets and (optionally) permissions
+        if self.__conf_file is None:
+            return
+        for line in open(self.__conf_file,'r'):
+            if line.startswith('#') or line.strip() == '':
+                continue
+            elif line.startswith('USER'):
+                # e.g. USER    pjb     1000
+                fields = line.strip('\n').split('\t')
+                if len(fields) == 3:
+                    self.users[int(fields[2])] = fields[1]
+                else:
+                    logging.error("Bad line: %s" % line.strip())
+                    continue
+            elif line.startswith('FILE'):
+                # e.g. FILE    virtfile    /actual/file     1000
+                fields = line.strip('\n').split('\t')
+                if len(fields) == 4:
+                    self.files[fields[1]] = fields[2]
+                    if fields[3]:
+                        self.access[fields[1]] = [int(x) for x in fields[3].split(',')]
+                    else:
+                        self.access[fields[1]] = []
+                else:
+                    logging.error("Bad line: %s" % line.strip('\n'))
+                    continue
+            else:
+                logging.error("Unrecognised line: %s" % line.strip())
+                continue
+
+    def save(self,conf_file):
+        """Save data to a new file
+        """
+        fp = open(conf_file,'w')
+        fp.write('# Configuration file for FuseBox virtual file system\n')
+        fp.write('#\n# Users\n')
+        for uid in self.users:
+            fp.write('USER\t%s\t%s\n' % (self.users[uid],uid))
+        fp.write('#\n# Files\n')
+        for path in self.files:
+            fp.write('FILE\t%s\t%s\t%s\n' % (path,self.files[path],
+                                             ','.join([str(x) for x in self.access[path]])))
+        fp.close()
+
+    def populate(self,boxfs):
+        """Populate a BoxFS object from conf file
+        """
+        # Conf file is tab-delimited
+        # Lines starting with # are comments, blank lines are ignored
+        # Lines starting with USER define user name and UID
+        # Lines starting with FILE define files, targets and permissions
+        for uid in self.users:
+            boxfs.add_user(uid,self.users[uid])
+        for path in self.files:
+            boxfs.add_file(path,self.files[path],self.access[path])
+        return boxfs
+
+    def add_user(self,name,uid):
+        """Add a user entry to the conf file
+        """
+        uid = int(uid)
+        self.users[uid] = name
+
+    def add_file(self,path,target,uids=[]):
+        """Add a file entry to the conf file
+        """
+        self.files[path] = target
+        self.access[path] = []
+        for uid in uids:
+            self.grant_access(path,uid)
+
+    def grant_access(self,path,uid):
+        """Grant access to a file entry for a user id
+        """
+        if not path in self.access:
+            self.access[path] = []
+        uid = int(uid)
+        if uid not in self.access[path]:
+            self.access[path].append(uid)
 
 import unittest
 class TestBoxFS(unittest.TestCase):
