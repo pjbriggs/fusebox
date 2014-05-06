@@ -23,9 +23,15 @@ Installing
 
 Make a virtualenv and install `fusepy` e.g.:
 
-    % virtualenv fuse
-    % . fuse/bin/activate
-    (fuse)% pip install fusepy
+    % virtualenv fusebox
+    % . fusebox/bin/activate
+    (fusebox)% pip install fusepy
+
+Then install `fusebox` e.g.:
+
+    (fusebox)% tar zvfx fusebox-0.0.1.tar.gz 
+    (fusebox)% cd fusebox-0.0.1
+    (fusebox)% python setup.py install
 
 Set up (mapped VFS)
 -------------------
@@ -42,20 +48,20 @@ Note that UIDs must correspond to uids of users on the real file system.
 Running
 -------
 
-First activate the virtualenv to make sure that `fusepy` is available, e.g.
+First activate the virtualenv to make sure that `fusebox` is available, e.g.
 
-    % . fuse/bin/activate
+    % . fusebox/bin/activate
 
 To start a passthrough VFS instance:
 
-    (fuse)% fusebox.py [ --type=passthrough ] --root=ROOT_DIR MOUNTPOINT
+    (fusebox)% fusebox.py [ --type=passthrough ] --root=ROOT_DIR MOUNTPOINT
 
 where `ROOT_DIR` is the root directory (in the actual file system) that will
 be exposed by fusebox.
 
 For a mapped VFS:
 
-    (fuse)% fusebox.py --type=mapped --conf=CONF_FILE MOUNTPOINT
+    (fusebox)% fusebox.py --type=mapped --conf=CONF_FILE MOUNTPOINT
 
 where `CONF_FILE` defines the mapping of files and users in the virtual file
 system to those in the real file system.
