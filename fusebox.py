@@ -24,12 +24,12 @@ import logging
 import optparse
 
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
-from boxfs import BoxFS, BoxConfFile
+from boxfs import PassThroughBoxFS, BoxFS, BoxConfFile
 
 class FuseBox(Operations):
 
-    def __init__(self,conf_file=None):
-        self.boxfs = BoxConfFile(conf_file).populate(BoxFS())
+    def __init__(self,boxfs):
+        self.boxfs = boxfs
 
     def context_uid(self):
         cxt = fuse_get_context()
@@ -51,10 +51,10 @@ class FuseBox(Operations):
                 raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def chown(self, path, uid, gid):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def getattr(self, path, fh=None):
         logging.debug("GETATTR %s %s" % (path,fh))
@@ -85,16 +85,16 @@ class FuseBox(Operations):
             yield r
 
     def readlink(self, path):
-        raise NotImplementedError
+        return os.readlink(self.boxfs.target_for(path))
 
     def mknod(self, path, mode, dev):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def rmdir(self, path):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def mkdir(self, path, mode):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def statfs(self, path):
         logging.debug("STATFS %s" % path)
@@ -114,16 +114,16 @@ class FuseBox(Operations):
         return stvfs
 
     def unlink(self, path):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def symlink(self, target, name):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def rename(self, old, new):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def link(self, target, name):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def utimens(self, path, times=None):
         return os.utime(self.boxfs.target_for(path), times)
@@ -137,7 +137,7 @@ class FuseBox(Operations):
         return os.open(full_path, flags)
 
     def create(self, path, mode, fi=None):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def read(self, path, length, offset, fh):
         logging.debug("READ %s %s %s %s" % (path,length,offset,fh))
@@ -145,10 +145,10 @@ class FuseBox(Operations):
         return os.read(fh, length)
 
     def write(self, path, buf, offset, fh):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def truncate(self, path, length, fh=None):
-        raise NotImplementedError
+        raise FuseOSError(errno.EROFS)
 
     def flush(self, path, fh):
         return os.fsync(fh)
@@ -159,10 +159,10 @@ class FuseBox(Operations):
     def fsync(self, path, fdatasync, fh):
         return self.flush(path, fh)
 
-def main(mountpoint,conf_file=None):
+def main(fusebox,mountpoint,conf_file=None):
     # Need to set user_allow_other in /etc/fuse.conf for
     # allow_other option to work (or run this process as root)
-    fusebox = FuseBox(conf_file)
+    ##fusebox = FuseBox(conf_file)
     FUSE(fusebox,mountpoint,foreground=True,allow_other=True)
 
 if __name__ == '__main__':
@@ -170,11 +170,33 @@ if __name__ == '__main__':
     p = optparse.OptionParser(usage="%prog OPTIONS MOUNTPOINT",
                               description="Start fusebox virtual file system and "
                               "mount at MOUNTPOINT.")
+    p.add_option("--type",action='store',dest="vfs",default="passthrough",
+                 help="specify type of virtual file system to create; options are "
+                 "'passthrough' (default) or 'mapped'")
     p.add_option("--conf",action='store',dest='conf_file',default=None,
-                 help="read user and file info from CONF_FILE")
+                 help="read user and file mapping info from CONF_FILE for 'mapped' "
+                 "VFS")
+    p.add_option("--root",action='store',dest='root_dir',default=None,
+                 help="directory that root of 'passthrough' VFS maps onto in the "
+                 "real filesystem")
     p.add_option("--debug",action='store_true',dest='debug',
                  help="turn on debugging output")
     options,args = p.parse_args()
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-    main(args[0],conf_file=options.conf_file)
+    if options.vfs == 'passthrough':
+        # Read-only passthrough VFS
+        if options.root_dir:
+            boxfs = PassThroughBoxFS(options.root_dir)
+        else:
+            p.error("'passthrough' VFS requires a root directory")
+    elif options.vfs == 'mapped':
+        # Read-only mapped VFS
+        if options.conf_file:
+            boxfs = BoxConfFile(conf_file).populate(BoxFS())
+        else:
+            p.error("'mapped' VFS requires a conf file")
+    else:
+        p.error("Unknown VFS type: '%s'" % options.vfs)
+    fusebox = FuseBox(boxfs)
+    main(fusebox,args[0])

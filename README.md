@@ -1,9 +1,12 @@
 fusebox
 =======
 
-Implements a FUSE virtual file system that can be used to create a read-only
-arbitrary artifical filesystem with fine-grained access to individual files
-for users.
+Implements a number of different read-only FUSE virtual file systems (VFS):
+
+ * `passthrough` VFS providing read-only access to an existing directory
+    structure;
+ * `mapped` VFS providing a read-only arbitrary artifical filesystem with
+    fine-grained access to individual files for users.
 
 **This implementation is a proof-of-principle, not a production system.**
 
@@ -24,26 +27,41 @@ Make a virtualenv and install `fusepy` e.g.:
     % . fuse/bin/activate
     (fuse)% pip install fusepy
 
-Set up
-------
+Set up (mapped VFS)
+-------------------
 
-Use `manage_conf.py` to create and edit a conf file , which defines users
-along with mappings of virtual files to actual files, and which users have
-access to them.
+A mapped VFS requires a configuration file which defines, which defines
+users along with mappings of virtual files to actual files (and which users
+have access to them).
+
+The `manage_conf.py` utility can be used to create and edit a conf file by
+adding users and files.
 
 Note that UIDs must correspond to uids of users on the real file system.
 
 Running
 -------
 
-Activate the virtualenv and start the `fusebox` instance e.g.:
+First activate the virtualenv to make sure that `fusepy` is available, e.g.
 
     % . fuse/bin/activate
-    (fuse)% fusebox.py --conf=CONF_FILE MOUNTPOINT
 
-The CONF_FILE defines the virtual file system. The MOUNTPOINT must be an
-existing empty directory, this is where the virtual file system will
-appear.
+To start a passthrough VFS instance:
+
+    (fuse)% fusebox.py [ --type=passthrough ] --root=ROOT_DIR MOUNTPOINT
+
+where `ROOT_DIR` is the root directory (in the actual file system) that will
+be exposed by fusebox.
+
+For a mapped VFS:
+
+    (fuse)% fusebox.py --type=mapped --conf=CONF_FILE MOUNTPOINT
+
+where `CONF_FILE` defines the mapping of files and users in the virtual file
+system to those in the real file system.
+
+In both cases the `MOUNTPOINT` must be an existing empty directory; this is
+where the virtual file system will appear.
 
 In order to allow other users to access the fusebox file system, either run
 fusebox as root or make sure the the `user_allow_other` is present in the

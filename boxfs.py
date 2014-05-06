@@ -268,6 +268,62 @@ class BoxConfFile:
         if uid not in self.access[path]:
             self.access[path].append(uid)
 
+class PassThroughBoxFS:
+    """Pass-through implementation of BoxFS
+
+    """
+
+    def __init__(self,root):
+        self.__root = root
+
+    def normalise_path(self,path):
+        """Add leading slash if none found
+        """
+        logging.debug("NORMALISE_PATH in : %s" % path)
+        path = os.path.join(self.__root,path.lstrip('/'))
+        logging.debug("NORMALISE_PATH out: %s" % path)
+        return path
+
+    def add_file(self,path,target,access=[]):
+        """Adds a file
+        """
+        pass
+
+    def target_for(self,path):
+        """Returns the target for a file
+        """
+        return self.normalise_path(path)
+
+    def exists(self,path):
+        """Returns True if path is present
+        """
+        return os.path.exists(self.target_for(path))
+
+    def is_dir(self,path):
+        """Returns True if path is a directory
+        """
+        return os.path.isdir(self.target_for(path))
+
+    def is_file(self,path):
+        """Returns True if path is a directory
+        """
+        return os.path.isfile(self.target_for(path))
+
+    def list_dir(self,path,user=None):
+        """Returns directory contents, optionally restricted by accessibility for user
+        """
+        return os.listdir(self.target_for(path))
+
+    def grant_access(self,path,user):
+        """Grants access permission on path to user
+        """
+        pass
+
+    def has_access(self,path,user):
+        """Returns True is user has permission to access
+        """
+        return True
+
 import unittest
 class TestBoxFS(unittest.TestCase):
     def setUp(self):
